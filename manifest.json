@@ -1,0 +1,19 @@
+{
+   "manifest_version": 3,
+   "name": "RecruitMaxxing",
+   "version": "1.0.3",
+   "description": "Job Description Analyzer",
+   "permissions": ["contextMenus", "storage", "identity", "downloads"],
+   "action": {
+      "default_popup": "index.html"
+   },
+   "background": {
+      "service_worker": "background.js",
+      "type": "module"
+   },
+   "icons": {
+      "16": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+   }
+}
