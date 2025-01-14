@@ -6,6 +6,7 @@ function App() {
    const [analysisResult, setAnalysisResult] = useState(null);
    const [loading, setLoading] = useState(false);
    const [isDark, setIsDark] = useState(true);
+   const [hoveredSkill, setHoveredSkill] = useState(null);
 
    useEffect(() => {
       // Check system preference
@@ -33,28 +34,57 @@ function App() {
 
       setLoading(true);
       try {
-         console.log("Starting job description analysis...");
-         const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-         const API_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent";
+         const prompt = `As an expert technical recruiter and Boolean search specialist, analyze this job description and create detailed Boolean search strings with explanations.
 
-         // Updated prompt to emphasize boolean string and screening questions
-         const prompt = `Analyze this job description as an expert technical recruiter and ATS specialist. 
-Return ONLY a raw JSON object without any markdown formatting. The JSON structure should be:
+Return ONLY a raw JSON object with this structure:
 
 {
   "keySkills": [
-    { "skill": "string", "importance": "required|preferred", "context": "string" }
+    {
+      "skill": "string",
+      "importance": "required|preferred",
+      "alternatives": ["array of alternative terms", "abbreviations", "related skills"],
+      "context": "Why this skill matters for the role, explain it in-detail like iam 5 years old in laymen terms"
+    }
   ],
-  "booleanString": "Create a detailed boolean search string with AND, OR, NOT operators",
-  "redFlags": ["string"],
-  "suggestedCriteria": {
-    "mustHave": ["string"],
-    "niceToHave": ["string"]
-  }
+  "booleanSearches": {
+    "broad": {
+      "string": "Boolean string here",
+      "explanation": "General strategy explanation",
+      "construction": {
+        "titleVariations": ["List of job title variations used"],
+        "coreTechnologies": ["Core tech terms used"],
+        "groupingLogic": [
+          {
+            "group": "The grouped terms",
+            "reason": "Why these terms were grouped together",
+            "expectedImpact": "What this grouping achieves"
+          }
+        ]
+      }
+    },
+    "mid": {
+      "string": "Boolean string here",
+      "explanation": "Strategy explanation",
+      "construction": {/* same structure as broad */}
+    },
+    "narrow": {
+      "string": "Boolean string here",
+      "explanation": "Strategy explanation",
+      "construction": {/* same structure as broad */}
+    }
+  },
 }
 
-For the boolean string, create a comprehensive search string suitable for LinkedIn and job boards.
+Guidelines for Boolean string construction:
+1. Explain each major grouping of terms, Detail why specific operators were chosen
+2. Detail the progression from broad to narrow, for broad search try to breakdown long tail keywords/multiple words keywords if we can.
+3. Show alternatives considered, Include common variations and abbreviations
+4. Use parentheses to group related terms but not more than one level of grouping
+5. Use quotes for exact phrases and keyword with 2 or more words in it(e.g. "data engineer")
+6. Include common variations and synonyms for job titles and technologies.
+7. Account for different levels of seniority (eg:manager, director, etc), but do not include years of experience in the search string
+8. Include relevant certifications or domain-specific keywords.
 
 Job Description:
 ${jobDescription}
@@ -62,6 +92,10 @@ ${jobDescription}
 Remember: Return ONLY the JSON object with no markdown formatting.`;
 
          console.log("Sending request to Gemini API...");
+         const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+         const API_URL =
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent";
+
          const response = await fetch(`${API_URL}?key=${API_KEY}`, {
             method: "POST",
             headers: {
@@ -98,14 +132,69 @@ Remember: Return ONLY the JSON object with no markdown formatting.`;
             const parsedAnalysis = JSON.parse(cleanedText);
             console.log("Parsed Analysis:", parsedAnalysis);
 
-            // Ensure required properties exist
+            // Ensure required properties exist with default values
             const validatedAnalysis = {
-               ...parsedAnalysis,
-               booleanString:
-                  parsedAnalysis.booleanString || "No boolean string generated",
+               keySkills: parsedAnalysis.keySkills || [],
+               booleanSearches: {
+                  broad: {
+                     string:
+                        parsedAnalysis.booleanSearches?.broad?.string ||
+                        "No broad search generated",
+                     explanation:
+                        parsedAnalysis.booleanSearches?.broad?.explanation ||
+                        "",
+                     construction: {
+                        titleVariations:
+                           parsedAnalysis.booleanSearches?.broad?.construction
+                              ?.titleVariations || [],
+                        coreTechnologies:
+                           parsedAnalysis.booleanSearches?.broad?.construction
+                              ?.coreTechnologies || [],
+                        groupingLogic:
+                           parsedAnalysis.booleanSearches?.broad?.construction
+                              ?.groupingLogic || [],
+                     },
+                  },
+                  mid: {
+                     string:
+                        parsedAnalysis.booleanSearches?.mid?.string ||
+                        "No mid search generated",
+                     explanation:
+                        parsedAnalysis.booleanSearches?.mid?.explanation || "",
+                     construction: {
+                        titleVariations:
+                           parsedAnalysis.booleanSearches?.mid?.construction
+                              ?.titleVariations || [],
+                        coreTechnologies:
+                           parsedAnalysis.booleanSearches?.mid?.construction
+                              ?.coreTechnologies || [],
+                        groupingLogic:
+                           parsedAnalysis.booleanSearches?.mid?.construction
+                              ?.groupingLogic || [],
+                     },
+                  },
+                  narrow: {
+                     string:
+                        parsedAnalysis.booleanSearches?.narrow?.string ||
+                        "No narrow search generated",
+                     explanation:
+                        parsedAnalysis.booleanSearches?.narrow?.explanation ||
+                        "",
+                     construction: {
+                        titleVariations:
+                           parsedAnalysis.booleanSearches?.narrow?.construction
+                              ?.titleVariations || [],
+                        coreTechnologies:
+                           parsedAnalysis.booleanSearches?.narrow?.construction
+                              ?.coreTechnologies || [],
+                        groupingLogic:
+                           parsedAnalysis.booleanSearches?.narrow?.construction
+                              ?.groupingLogic || [],
+                     },
+                  },
+               },
             };
 
-            console.log("Validated Analysis:", validatedAnalysis);
             setAnalysisResult(validatedAnalysis);
          } catch (parseError) {
             console.error("JSON Parse Error:", parseError);
@@ -120,9 +209,9 @@ Remember: Return ONLY the JSON object with no markdown formatting.`;
    };
 
    return (
-      <div className="w-[400px] max-h-[600px] overflow-y-auto bg-light-primary dark:bg-dark-primary text-light-text dark:text-dark-text transition-colors duration-200">
+      <div className="w-[800px] max-h-full overflow-y-auto bg-light-primary dark:bg-dark-primary text-light-text dark:text-dark-text transition-colors duration-200">
          <div className="sticky top-0 z-10 bg-light-primary dark:bg-dark-primary p-4 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between p-2 bg-light-secondary dark:bg-dark-secondary rounded-lg border border-gray-200 dark:border-gray-700">
                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
                   RecruitMaxxing
                </h1>
@@ -142,7 +231,7 @@ Remember: Return ONLY the JSON object with no markdown formatting.`;
          <div className="p-4 space-y-4">
             <div className="relative">
                <textarea
-                  className="w-full h-28 p-3 bg-light-secondary dark:bg-dark-secondary text-light-text dark:text-dark-text rounded-lg border border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200 outline-none resize-none text-sm"
+                  className="w-full h-40 p-3 bg-light-secondary dark:bg-dark-secondary text-light-text dark:text-dark-text rounded-lg border border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200 outline-none resize-none text-sm"
                   placeholder="Paste job description here..."
                   value={jobDescription}
                   onChange={(e) => setJobDescription(e.target.value)}
@@ -169,47 +258,267 @@ Remember: Return ONLY the JSON object with no markdown formatting.`;
 
             {analysisResult && (
                <div className="space-y-4">
-                  {/* Key Skills Section */}
+                  {/* Key Skills Section with Alternatives */}
                   <div className="bg-light-secondary dark:bg-dark-secondary rounded-lg p-4 border border-gray-200 dark:border-gray-700 shadow-lg">
                      <h2 className="text-sm font-semibold text-light-text dark:text-dark-text mb-3">
-                        Required Skills
+                        Skills Analysis
                      </h2>
                      <div className="flex flex-wrap gap-2">
                         {analysisResult.keySkills.map((skill, index) => (
-                           <span
-                              key={index}
-                              className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                 skill.importance === "required"
-                                    ? "bg-red-500/10 text-red-500 dark:text-red-400 border border-red-500/20"
-                                    : "bg-blue-500/10 text-blue-500 dark:text-blue-400 border border-blue-500/20"
-                              } transition-all duration-200 hover:scale-105`}
-                           >
-                              {skill.skill}
-                           </span>
+                           <div key={index} className="relative">
+                              <span
+                                 onMouseEnter={() => setHoveredSkill(index)}
+                                 onMouseLeave={() => setHoveredSkill(null)}
+                                 className={`px-2 py-1 rounded-full text-xs font-medium cursor-help
+                  ${
+                     skill.importance === "required"
+                        ? "bg-red-500/10 text-red-500 dark:text-red-400 border border-red-500/20"
+                        : "bg-blue-500/10 text-blue-500 dark:text-blue-400 border border-blue-500/20"
+                  }`}
+                              >
+                                 {skill.skill}
+                              </span>
+
+                              {/* Hover Card */}
+                              {hoveredSkill === index && (
+                                 <div className="absolute z-50 w-64 p-3 mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700">
+                                    <div className="text-xs space-y-2">
+                                       <div>
+                                          <span className="font-medium text-gray-700 dark:text-gray-300">
+                                             Context:{" "}
+                                          </span>
+                                          <span className="text-gray-600 dark:text-gray-400">
+                                             {skill.context}
+                                          </span>
+                                       </div>
+                                       {skill.alternatives?.length > 0 && (
+                                          <div>
+                                             <span className="font-medium text-gray-700 dark:text-gray-300">
+                                                Alternatives:{" "}
+                                             </span>
+                                             <div className="flex flex-wrap gap-1 mt-1">
+                                                {skill.alternatives.map(
+                                                   (alt, i) => (
+                                                      <span
+                                                         key={i}
+                                                         className="bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded text-gray-600 dark:text-gray-400"
+                                                      >
+                                                         {alt}
+                                                      </span>
+                                                   )
+                                                )}
+                                             </div>
+                                          </div>
+                                       )}
+                                       <div>
+                                          <span className="font-medium text-gray-700 dark:text-gray-300">
+                                             Importance:{" "}
+                                          </span>
+                                          <span
+                                             className={`${
+                                                skill.importance === "required"
+                                                   ? "text-red-500 dark:text-red-400"
+                                                   : "text-blue-500 dark:text-blue-400"
+                                             }`}
+                                          >
+                                             {skill.importance}
+                                          </span>
+                                       </div>
+                                    </div>
+                                 </div>
+                              )}
+                           </div>
                         ))}
                      </div>
                   </div>
 
-                  {/* Boolean Search String */}
+                  {/* Boolean Search Strings with Construction Details */}
                   <div className="bg-light-secondary dark:bg-dark-secondary rounded-lg p-4 border border-gray-200 dark:border-gray-700 shadow-lg">
                      <h2 className="text-sm font-semibold text-light-text dark:text-dark-text mb-3">
-                        Boolean Search String
+                        Boolean Search Construction
                      </h2>
-                     <div className="relative group">
+
+                     {/* Broad Search with Details */}
+                     <div className="mb-6">
+                        <div className="flex items-center justify-between mb-2">
+                           <h3 className="text-xs font-medium text-blue-500">
+                              Broad Search
+                           </h3>
+                           <button
+                              onClick={() =>
+                                 navigator.clipboard.writeText(
+                                    analysisResult.booleanSearches.broad.string
+                                 )
+                              }
+                              className="px-2 py-1 text-xs bg-blue-500/10 text-blue-500 rounded-full hover:bg-blue-500/20"
+                           >
+                              Copy
+                           </button>
+                        </div>
                         <pre className="text-xs font-mono bg-light-primary dark:bg-dark-primary p-3 rounded-lg border border-gray-200 dark:border-gray-700 whitespace-pre-wrap break-words">
-                           {analysisResult.booleanString ||
-                              "No boolean string generated"}
+                           {analysisResult.booleanSearches.broad.string}
                         </pre>
-                        <button
-                           onClick={() => {
-                              navigator.clipboard.writeText(
-                                 analysisResult.booleanString
-                              );
-                           }}
-                           className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs font-medium transition-all duration-200"
-                        >
-                           Copy
-                        </button>
+
+                        {/* Construction Details */}
+                        <div className="mt-2 space-y-2">
+                           <div className="text-xs">
+                              <h4 className="font-medium text-gray-700 dark:text-gray-300">
+                                 Title Variations
+                              </h4>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                 {analysisResult.booleanSearches.broad.construction.titleVariations.map(
+                                    (title, i) => (
+                                       <span
+                                          key={i}
+                                          className="bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded"
+                                       >
+                                          {title}
+                                       </span>
+                                    )
+                                 )}
+                              </div>
+                           </div>
+
+                           <div className="text-xs">
+                              <h4 className="font-medium text-gray-700 dark:text-gray-300">
+                                 Grouping Logic
+                              </h4>
+                              {analysisResult.booleanSearches.broad.construction.groupingLogic.map(
+                                 (group, i) => (
+                                    <div key={i} className="ml-2 mt-1">
+                                       <div className="font-mono text-gray-600 dark:text-gray-400">
+                                          {group.group}
+                                       </div>
+                                       <div className="text-gray-500 italic mt-0.5">
+                                          {group.reason}
+                                       </div>
+                                    </div>
+                                 )
+                              )}
+                           </div>
+                        </div>
+                     </div>
+
+                     {/* Mid Search with Details */}
+                     <div className="mb-6">
+                        <div className="flex items-center justify-between mb-2">
+                           <h3 className="text-xs font-medium text-purple-500">
+                              Mid-Level Search
+                           </h3>
+                           <button
+                              onClick={() =>
+                                 navigator.clipboard.writeText(
+                                    analysisResult.booleanSearches.mid.string
+                                 )
+                              }
+                              className="px-2 py-1 text-xs bg-purple-500/10 text-purple-500 rounded-full hover:bg-purple-500/20"
+                           >
+                              Copy
+                           </button>
+                        </div>
+                        <pre className="text-xs font-mono bg-light-primary dark:bg-dark-primary p-3 rounded-lg border border-gray-200 dark:border-gray-700 whitespace-pre-wrap break-words">
+                           {analysisResult.booleanSearches.mid.string}
+                        </pre>
+
+                        {/* Construction Details */}
+                        <div className="mt-2 space-y-2">
+                           <div className="text-xs">
+                              <h4 className="font-medium text-gray-700 dark:text-gray-300">
+                                 Title Variations
+                              </h4>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                 {analysisResult.booleanSearches.mid.construction.titleVariations.map(
+                                    (title, i) => (
+                                       <span
+                                          key={i}
+                                          className="bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded"
+                                       >
+                                          {title}
+                                       </span>
+                                    )
+                                 )}
+                              </div>
+                           </div>
+
+                           <div className="text-xs">
+                              <h4 className="font-medium text-gray-700 dark:text-gray-300">
+                                 Grouping Logic
+                              </h4>
+                              {analysisResult.booleanSearches.mid.construction.groupingLogic.map(
+                                 (group, i) => (
+                                    <div key={i} className="ml-2 mt-1">
+                                       <div className="font-mono text-gray-600 dark:text-gray-400">
+                                          {group.group}
+                                       </div>
+                                       <div className="text-gray-500 italic mt-0.5">
+                                          {group.reason}
+                                       </div>
+                                    </div>
+                                 )
+                              )}
+                           </div>
+                        </div>
+                     </div>
+
+                     {/* Narrow Search with Details */}
+                     <div className="mb-6">
+                        <div className="flex items-center justify-between mb-2">
+                           <h3 className="text-xs font-medium text-green-500">
+                              Narrow Search
+                           </h3>
+                           <button
+                              onClick={() =>
+                                 navigator.clipboard.writeText(
+                                    analysisResult.booleanSearches.narrow.string
+                                 )
+                              }
+                              className="px-2 py-1 text-xs bg-green-500/10 text-green-500 rounded-full hover:bg-green-500/20"
+                           >
+                              Copy
+                           </button>
+                        </div>
+                        <pre className="text-xs font-mono bg-light-primary dark:bg-dark-primary p-3 rounded-lg border border-gray-200 dark:border-gray-700 whitespace-pre-wrap break-words">
+                           {analysisResult.booleanSearches.narrow.string}
+                        </pre>
+
+                        {/* Construction Details */}
+                        <div className="mt-2 space-y-2">
+                           <div className="text-xs">
+                              <h4 className="font-medium text-gray-700 dark:text-gray-300">
+                                 Title Variations
+                              </h4>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                 {analysisResult.booleanSearches.narrow.construction.titleVariations.map(
+                                    (title, i) => (
+                                       <span
+                                          key={i}
+                                          className="bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded"
+                                       >
+                                          {title}
+                                       </span>
+                                    )
+                                 )}
+                              </div>
+                           </div>
+
+                           <div className="text-xs">
+                              <h4 className="font-medium text-gray-700 dark:text-gray-300">
+                                 Grouping Logic
+                              </h4>
+                              {analysisResult.booleanSearches.narrow.construction.groupingLogic.map(
+                                 (group, i) => (
+                                    <div key={i} className="ml-2 mt-1">
+                                       <div className="font-mono text-gray-600 dark:text-gray-400">
+                                          {group.group}
+                                       </div>
+                                       <div className="text-gray-500 italic mt-0.5">
+                                          {group.reason}
+                                       </div>
+                                    </div>
+                                 )
+                              )}
+                           </div>
+                        </div>
                      </div>
                   </div>
                </div>
