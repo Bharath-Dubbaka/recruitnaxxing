@@ -14,6 +14,7 @@ function App() {
    const [loading, setLoading] = useState(false);
    const [isDark, setIsDark] = useState(true);
    const [hoveredSkill, setHoveredSkill] = useState(null);
+   const [analysisProgress, setAnalysisProgress] = useState("idle"); // 'idle' | 'skills' | 'boolean' | 'complete'
 
    useEffect(() => {
       localStorage.setItem("lastJobDescription", jobDescription);
@@ -56,12 +57,50 @@ function App() {
       document.documentElement.classList.toggle("dark");
    };
 
+   const sanitizeJsonString = (text) => {
+      try {
+         // First, log the input for debugging
+         console.log("Input text to sanitize:", text);
+
+         // Remove markdown and clean the text
+         let cleanText = text
+            .replace(/```json\s*|\s*```/g, "") // Remove code blocks
+            .replace(/[\u201C\u201D]/g, '"') // Replace smart quotes
+            .replace(/[\u2018\u2019]/g, "'") // Replace smart single quotes
+            .trim();
+
+         // Check if we have a valid JSON structure
+         if (!cleanText.startsWith("{")) {
+            console.log("Text doesn't start with {, trying to find JSON");
+            const jsonStart = cleanText.indexOf("{");
+            const jsonEnd = cleanText.lastIndexOf("}");
+
+            if (jsonStart !== -1 && jsonEnd !== -1) {
+               cleanText = cleanText.slice(jsonStart, jsonEnd + 1);
+            } else {
+               throw new Error("No valid JSON object found in response");
+            }
+         }
+
+         // Try parsing to validate
+         JSON.parse(cleanText);
+
+         console.log("Cleaned text:", cleanText);
+         return cleanText;
+      } catch (error) {
+         console.error("Error in sanitizeJsonString:", error);
+         return null;
+      }
+   };
+
    const analyzeJobDescription = async () => {
       if (!jobDescription.trim()) return;
-
       setLoading(true);
+      setAnalysisProgress("skills");
+
       try {
-         const prompt = `As an expert technical recruiter and Boolean search specialist, analyze this job description and create detailed Boolean search strings with explanations.
+         // First prompt: Analyze skills and their relationships
+         const skillsPrompt = `As an expert technical recruiter, analyze this job description and and identify ALL technical skills:
 
 Return ONLY a raw JSON object with this structure:
 
@@ -72,7 +111,7 @@ Return ONLY a raw JSON object with this structure:
       "importance": "required|preferred",
       "alternatives": ["array of alternative terms", "abbreviations", "related skills"],
       "context": "Why this skill matters for the role, explain it in-detail like iam 5 years old in laymen terms",
-       "category": "foundation|framework|tool|language|database|etc",
+      "category": "foundation|framework|tool|language|database|etc",
       "relationships": [
         {
           "relatedSkill": "name of related skill",
@@ -81,7 +120,39 @@ Return ONLY a raw JSON object with this structure:
         }
       ]
     }
-  ],
+  ]
+}
+
+Guidelines for explanations:
+1. Use real-world analogies (e.g., "If HTML is like building blocks, CSS is like the paint and decorations")
+2. Avoid technical jargon, explain concepts using everyday examples
+3. Show how skills build upon each other (e.g., "You need HTML before you can use React, like you need to learn to walk before you can run")
+4. Explain why certain skills are commonly used together
+5. Use analogies that non-technical people can relate to (cooking, building, art, etc.)
+For example, if the skills are HTML, CSS, JavaScript, and React, explain their relationship like:
+- HTML is like the building blocks of a house
+- CSS is like the paint, furniture, and decorations
+- JavaScript is like the electricity and plumbing that makes things work
+- React is like having pre-built rooms you can quickly add to your house
+
+Job Description:
+${jobDescription}
+
+Remember: Return ONLY the JSON object with no markdown formatting.`;
+
+         // Make first API call for skills analysis
+         const skillsResponse = await makeAPICall(skillsPrompt);
+         const skillsAnalysis = await parseAndValidateResponse(skillsResponse);
+         setAnalysisProgress("boolean");
+
+         // Second prompt: Generate boolean searches based on identified skills
+         const booleanPrompt = `As an expert Boolean search specialist, create detailed Boolean search strings based on these identified skills:
+
+${JSON.stringify(skillsAnalysis.keySkills, null, 2)}
+
+Return ONLY a raw JSON object with this structure:
+
+{
   "booleanSearches": {
     "broad": {
       "string": "Boolean string here",
@@ -108,7 +179,7 @@ Return ONLY a raw JSON object with this structure:
       "explanation": "Strategy explanation",
       "construction": {/* same structure as broad */}
     }
-  },
+  }
 }
 
 Guidelines for Boolean string construction:
@@ -121,29 +192,40 @@ Guidelines for Boolean string construction:
 7. Account for different levels of seniority (eg:manager, director, etc), but do not include years of experience in the search string
 8. Include relevant certifications or domain-specific keywords.
 
-
-Guidelines for explanations:
-1. Use real-world analogies (e.g., "If HTML is like building blocks, CSS is like the paint and decorations")
-2. Avoid technical jargon, explain concepts using everyday examples
-3. Show how skills build upon each other (e.g., "You need HTML before you can use React, like you need to learn to walk before you can run")
-4. Explain why certain skills are commonly used together
-5. Use analogies that non-technical people can relate to (cooking, building, art, etc.)
-For example, if the skills are HTML, CSS, JavaScript, and React, explain their relationship like:
-- HTML is like the building blocks of a house
-- CSS is like the paint, furniture, and decorations
-- JavaScript is like the electricity and plumbing that makes things work
-- React is like having pre-built rooms you can quickly add to your house
-
 Job Description:
 ${jobDescription}
 
 Remember: Return ONLY the JSON object with no markdown formatting.`;
 
-         console.log("Sending request to Gemini API...");
-         const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-         const API_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent";
+         // Make second API call for boolean searches
+         const booleanResponse = await makeAPICall(booleanPrompt);
+         const booleanAnalysis = await parseAndValidateResponse(
+            booleanResponse
+         );
 
+         // Combine the results
+         const combinedAnalysis = {
+            keySkills: skillsAnalysis.keySkills,
+            booleanSearches: booleanAnalysis.booleanSearches,
+         };
+
+         setAnalysisResult(combinedAnalysis);
+         setAnalysisProgress("complete");
+      } catch (error) {
+         console.error("Analysis error:", error);
+         setAnalysisResult(null);
+      } finally {
+         setLoading(false);
+      }
+   };
+
+   // Helper function for API calls
+   const makeAPICall = async (prompt) => {
+      const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+      const API_URL =
+         "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent";
+
+      try {
          const response = await fetch(`${API_URL}?key=${API_KEY}`, {
             method: "POST",
             headers: {
@@ -159,101 +241,63 @@ Remember: Return ONLY the JSON object with no markdown formatting.`;
          });
 
          if (!response.ok) {
-            throw new Error("Failed to analyze job description");
+            throw new Error(`API request failed: ${response.status}`);
          }
 
          const data = await response.json();
          console.log("Raw API Response:", data);
-
-         const analysisText = data.candidates[0].content.parts[0].text;
-         console.log("Analysis Text:", analysisText);
-
-         // Clean the response text before parsing
-         const cleanedText = analysisText
-            .replace(/```json/gi, "")
-            .replace(/```/g, "")
-            .trim();
-
-         console.log("Cleaned Text:", cleanedText);
-
-         try {
-            const parsedAnalysis = JSON.parse(cleanedText);
-            console.log("Parsed Analysis:", parsedAnalysis);
-
-            // Ensure required properties exist with default values
-            const validatedAnalysis = {
-               keySkills: parsedAnalysis.keySkills || [],
-               booleanSearches: {
-                  broad: {
-                     string:
-                        parsedAnalysis.booleanSearches?.broad?.string ||
-                        "No broad search generated",
-                     explanation:
-                        parsedAnalysis.booleanSearches?.broad?.explanation ||
-                        "",
-                     construction: {
-                        titleVariations:
-                           parsedAnalysis.booleanSearches?.broad?.construction
-                              ?.titleVariations || [],
-                        coreTechnologies:
-                           parsedAnalysis.booleanSearches?.broad?.construction
-                              ?.coreTechnologies || [],
-                        groupingLogic:
-                           parsedAnalysis.booleanSearches?.broad?.construction
-                              ?.groupingLogic || [],
-                     },
-                  },
-                  mid: {
-                     string:
-                        parsedAnalysis.booleanSearches?.mid?.string ||
-                        "No mid search generated",
-                     explanation:
-                        parsedAnalysis.booleanSearches?.mid?.explanation || "",
-                     construction: {
-                        titleVariations:
-                           parsedAnalysis.booleanSearches?.mid?.construction
-                              ?.titleVariations || [],
-                        coreTechnologies:
-                           parsedAnalysis.booleanSearches?.mid?.construction
-                              ?.coreTechnologies || [],
-                        groupingLogic:
-                           parsedAnalysis.booleanSearches?.mid?.construction
-                              ?.groupingLogic || [],
-                     },
-                  },
-                  narrow: {
-                     string:
-                        parsedAnalysis.booleanSearches?.narrow?.string ||
-                        "No narrow search generated",
-                     explanation:
-                        parsedAnalysis.booleanSearches?.narrow?.explanation ||
-                        "",
-                     construction: {
-                        titleVariations:
-                           parsedAnalysis.booleanSearches?.narrow?.construction
-                              ?.titleVariations || [],
-                        coreTechnologies:
-                           parsedAnalysis.booleanSearches?.narrow?.construction
-                              ?.coreTechnologies || [],
-                        groupingLogic:
-                           parsedAnalysis.booleanSearches?.narrow?.construction
-                              ?.groupingLogic || [],
-                     },
-                  },
-               },
-            };
-
-            setAnalysisResult(validatedAnalysis);
-         } catch (parseError) {
-            console.error("JSON Parse Error:", parseError);
-            console.log("Raw Text that failed parsing:", analysisText);
-            throw new Error("Failed to parse analysis result");
-         }
+         return data;
       } catch (error) {
-         console.error("Analysis error:", error);
-         // Add user-friendly error handling here
+         console.error("API Call Error:", error);
+         throw error;
       }
-      setLoading(false);
+   };
+
+   // Helper function for parsing and validating responses
+   const parseAndValidateResponse = async (response) => {
+      if (!response.candidates?.[0]?.content?.parts?.[0]?.text) {
+         throw new Error("Invalid API response structure");
+      }
+
+      const analysisText = response.candidates[0].content.parts[0].text;
+      console.log("Raw API Response Text:", analysisText);
+
+      const cleanedText = sanitizeJsonString(analysisText);
+      if (!cleanedText) {
+         throw new Error("Failed to clean JSON text");
+      }
+
+      try {
+         const parsed = JSON.parse(cleanedText);
+         console.log("Successfully parsed JSON:", parsed);
+
+         // Validate the structure based on which response we're handling
+         if (parsed.keySkills) {
+            // Validate skills response
+            if (!Array.isArray(parsed.keySkills)) {
+               throw new Error("keySkills must be an array");
+            }
+         } else if (parsed.booleanSearches) {
+            // Validate boolean searches response
+            if (
+               !parsed.booleanSearches.broad ||
+               !parsed.booleanSearches.mid ||
+               !parsed.booleanSearches.narrow
+            ) {
+               throw new Error("Missing required boolean search sections");
+            }
+         } else {
+            throw new Error("Response missing required top-level properties");
+         }
+
+         return parsed;
+      } catch (parseError) {
+         console.error("JSON Parse Error:", parseError);
+         console.log("Text that failed to parse:", cleanedText);
+         throw new Error(
+            `Failed to parse analysis result: ${parseError.message}`
+         );
+      }
    };
 
    return (
@@ -305,7 +349,13 @@ Remember: Return ONLY the JSON object with no markdown formatting.`;
                {loading ? (
                   <div className="flex items-center justify-center space-x-2">
                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                     <span>Analyzing...</span>
+                     <span>
+                        {analysisProgress === "skills" && "Analyzing Skills..."}
+                        {analysisProgress === "boolean" &&
+                           "Generating Search Strings..."}
+                        {analysisProgress === "complete" &&
+                           "Completing Analysis..."}
+                     </span>
                   </div>
                ) : (
                   "Analyze Job Description"
@@ -316,7 +366,7 @@ Remember: Return ONLY the JSON object with no markdown formatting.`;
                <div className="space-y-4">
                   {/* Key Skills Section with Alternatives */}
                   <div className="bg-light-secondary dark:bg-dark-secondary rounded-lg p-4 border border-gray-200 dark:border-gray-700 shadow-lg">
-                     <h2 className="text-sm font-semibold text-light-text dark:text-dark-text mb-3">
+                     <h2 className="text-md font-semibold text-light-text dark:text-dark-text mb-3">
                         Skills Analysis
                      </h2>
                      <div className="flex flex-wrap gap-2">
@@ -390,7 +440,7 @@ Remember: Return ONLY the JSON object with no markdown formatting.`;
 
                   {/* Skills Relationship Section */}
                   <div className="bg-light-secondary dark:bg-dark-secondary rounded-lg p-4 border border-gray-200 dark:border-gray-700 shadow-lg">
-                     <h2 className="text-sm font-semibold text-light-text dark:text-dark-text mb-3">
+                     <h2 className="text-md font-semibold text-light-text dark:text-dark-text mb-3">
                         Understanding Skill Relationships
                      </h2>
                      <div className="space-y-4">
@@ -452,7 +502,7 @@ Remember: Return ONLY the JSON object with no markdown formatting.`;
 
                   {/* Boolean Search Strings with Construction Details */}
                   <div className="bg-light-secondary dark:bg-dark-secondary rounded-lg p-4 border border-gray-200 dark:border-gray-700 shadow-lg">
-                     <h2 className="text-sm font-semibold text-light-text dark:text-dark-text mb-3">
+                     <h2 className="text-md font-semibold text-light-text dark:text-dark-text mb-3">
                         Boolean Search Construction
                      </h2>
 
