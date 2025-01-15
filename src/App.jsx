@@ -2,11 +2,38 @@ import { useState, useEffect } from "react";
 import { Sun, Moon } from "lucide-react";
 
 function App() {
-   const [jobDescription, setJobDescription] = useState("");
-   const [analysisResult, setAnalysisResult] = useState(null);
+   const [jobDescription, setJobDescription] = useState(() => {
+      return localStorage.getItem("lastJobDescription") || "";
+   });
+
+   const [analysisResult, setAnalysisResult] = useState(() => {
+      const savedResult = localStorage.getItem("lastAnalysisResult");
+      return savedResult ? JSON.parse(savedResult) : null;
+   });
+
    const [loading, setLoading] = useState(false);
    const [isDark, setIsDark] = useState(true);
    const [hoveredSkill, setHoveredSkill] = useState(null);
+
+   useEffect(() => {
+      localStorage.setItem("lastJobDescription", jobDescription);
+   }, [jobDescription]);
+
+   useEffect(() => {
+      if (analysisResult) {
+         localStorage.setItem(
+            "lastAnalysisResult",
+            JSON.stringify(analysisResult)
+         );
+      }
+   }, [analysisResult]);
+
+   const handleClear = () => {
+      setJobDescription("");
+      setAnalysisResult(null);
+      localStorage.removeItem("lastJobDescription");
+      localStorage.removeItem("lastAnalysisResult");
+   };
 
    useEffect(() => {
       // Check system preference
@@ -236,15 +263,23 @@ Remember: Return ONLY the JSON object with no markdown formatting.`;
                   value={jobDescription}
                   onChange={(e) => setJobDescription(e.target.value)}
                />
-               <div className="absolute bottom-2 right-2 text-xs text-gray-500 dark:text-gray-400">
-                  {jobDescription.length} characters
+               <div className="absolute bottom-2 right-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span>{jobDescription.length} characters</span>
+                  {jobDescription && (
+                     <button
+                        onClick={handleClear}
+                        className="px-2 py-1 text-xs bg-red-500/10 text-red-500 rounded-full hover:bg-red-500/20 transition-colors duration-200"
+                     >
+                        Clear
+                     </button>
+                  )}
                </div>
             </div>
 
             <button
                className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
                onClick={analyzeJobDescription}
-               disabled={loading}
+               disabled={loading || !jobDescription.trim()}
             >
                {loading ? (
                   <div className="flex items-center justify-center space-x-2">
