@@ -71,7 +71,15 @@ Return ONLY a raw JSON object with this structure:
       "skill": "string",
       "importance": "required|preferred",
       "alternatives": ["array of alternative terms", "abbreviations", "related skills"],
-      "context": "Why this skill matters for the role, explain it in-detail like iam 5 years old in laymen terms"
+      "context": "Why this skill matters for the role, explain it in-detail like iam 5 years old in laymen terms",
+       "category": "foundation|framework|tool|language|database|etc",
+      "relationships": [
+        {
+          "relatedSkill": "name of related skill",
+          "relationship": "Explain how these skills work together in simple terms",
+          "analogy": "A real-world analogy to help understand the connection"
+        }
+      ]
     }
   ],
   "booleanSearches": {
@@ -112,6 +120,19 @@ Guidelines for Boolean string construction:
 6. Include common variations and synonyms for job titles and technologies.
 7. Account for different levels of seniority (eg:manager, director, etc), but do not include years of experience in the search string
 8. Include relevant certifications or domain-specific keywords.
+
+
+Guidelines for explanations:
+1. Use real-world analogies (e.g., "If HTML is like building blocks, CSS is like the paint and decorations")
+2. Avoid technical jargon, explain concepts using everyday examples
+3. Show how skills build upon each other (e.g., "You need HTML before you can use React, like you need to learn to walk before you can run")
+4. Explain why certain skills are commonly used together
+5. Use analogies that non-technical people can relate to (cooking, building, art, etc.)
+For example, if the skills are HTML, CSS, JavaScript, and React, explain their relationship like:
+- HTML is like the building blocks of a house
+- CSS is like the paint, furniture, and decorations
+- JavaScript is like the electricity and plumbing that makes things work
+- React is like having pre-built rooms you can quickly add to your house
 
 Job Description:
 ${jobDescription}
@@ -362,6 +383,68 @@ Remember: Return ONLY the JSON object with no markdown formatting.`;
                                     </div>
                                  </div>
                               )}
+                           </div>
+                        ))}
+                     </div>
+                  </div>
+
+                  {/* Skills Relationship Section */}
+                  <div className="bg-light-secondary dark:bg-dark-secondary rounded-lg p-4 border border-gray-200 dark:border-gray-700 shadow-lg">
+                     <h2 className="text-sm font-semibold text-light-text dark:text-dark-text mb-3">
+                        Understanding Skill Relationships
+                     </h2>
+                     <div className="space-y-4">
+                        {analysisResult.keySkills.map((skill, index) => (
+                           <div
+                              key={index}
+                              className="border-b border-gray-200 dark:border-gray-700 last:border-0 pb-4 last:pb-0"
+                           >
+                              <div className="flex items-center gap-2 mb-2">
+                                 <span
+                                    className={`px-2 py-1 rounded-full text-xs font-medium
+                                    ${
+                                       skill.importance === "required"
+                                          ? "bg-red-500/10 text-red-500 dark:text-red-400"
+                                          : "bg-blue-500/10 text-blue-500 dark:text-blue-400"
+                                    }`}
+                                 >
+                                    {skill.skill}
+                                 </span>
+                                 <span className="text-xs text-gray-500">
+                                    ({skill.category})
+                                 </span>
+                              </div>
+
+                              {/* Simple explanation with analogy */}
+                              <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
+                                 {skill.context}
+                              </p>
+
+                              {/* Related Skills */}
+                              {skill.relationships &&
+                                 skill.relationships.length > 0 && (
+                                    <div className="ml-4 space-y-2">
+                                       {skill.relationships.map((rel, idx) => (
+                                          <div
+                                             key={idx}
+                                             className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3"
+                                          >
+                                             <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-xs font-medium text-purple-500">
+                                                   Works with:{" "}
+                                                   {rel.relatedSkill}
+                                                </span>
+                                             </div>
+                                             <p className="text-xs text-gray-600 dark:text-gray-300">
+                                                {rel.relationship}
+                                             </p>
+                                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">
+                                                Think of it like: {rel.analogy}
+                                             </p>
+                                          </div>
+                                       ))}
+                                    </div>
+                                 )}
                            </div>
                         ))}
                      </div>
