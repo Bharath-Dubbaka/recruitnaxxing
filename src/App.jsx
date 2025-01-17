@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Sun, Moon } from "lucide-react";
+import { jsonrepair } from "jsonrepair";
 
 function App() {
    const [jobDescription, setJobDescription] = useState(() => {
@@ -262,41 +263,16 @@ Remember: Return ONLY the JSON object with no markdown formatting.`;
       const analysisText = response.candidates[0].content.parts[0].text;
       console.log("Raw API Response Text:", analysisText);
 
-      const cleanedText = sanitizeJsonString(analysisText);
-      if (!cleanedText) {
-         throw new Error("Failed to clean JSON text");
-      }
-
       try {
-         const parsed = JSON.parse(cleanedText);
+         // Remove markdown and use jsonrepair
+         const cleanText = analysisText.trim().replace(/```json|```/g, "");
+         const parsed = JSON.parse(jsonrepair(cleanText));
+
          console.log("Successfully parsed JSON:", parsed);
-
-         // Validate the structure based on which response we're handling
-         if (parsed.keySkills) {
-            // Validate skills response
-            if (!Array.isArray(parsed.keySkills)) {
-               throw new Error("keySkills must be an array");
-            }
-         } else if (parsed.booleanSearches) {
-            // Validate boolean searches response
-            if (
-               !parsed.booleanSearches.broad ||
-               !parsed.booleanSearches.mid ||
-               !parsed.booleanSearches.narrow
-            ) {
-               throw new Error("Missing required boolean search sections");
-            }
-         } else {
-            throw new Error("Response missing required top-level properties");
-         }
-
          return parsed;
-      } catch (parseError) {
-         console.error("JSON Parse Error:", parseError);
-         console.log("Text that failed to parse:", cleanedText);
-         throw new Error(
-            `Failed to parse analysis result: ${parseError.message}`
-         );
+      } catch (error) {
+         console.error("Parse error:", error);
+         throw error;
       }
    };
 
